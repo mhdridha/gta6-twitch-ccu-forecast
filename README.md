@@ -20,7 +20,7 @@ Launch days fall into families. Console-only rolling-midnight launches already h
 
 ## Validation
 
-Leave-one-out cross-validation on the 37 comparables shipped in the kit: mean pinball loss **0.42** (median 0.32), vs **0.93** for the flat-persistence house baseline; on the console-only family **0.21** vs **0.32**. The house baseline scores about 0.387 on the practice cases.
+Leave-one-out cross-validation on the 37 comparables shipped in the kit: mean pinball loss **0.43** (median 0.33), vs **0.93** for the flat-persistence house baseline; on the console-only family **0.19** vs **0.32**, winning on all 8 family cases. The house baseline scores about 0.387 on the practice cases; the v1 entry scored 0.205 there (rank 953/2192), and this v2 is the same model with the spread + median-smoothing steps above.
 
 ---
 

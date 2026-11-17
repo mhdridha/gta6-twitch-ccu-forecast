@@ -17,12 +17,19 @@
 #     * weight 0.3x for early-access-contaminated or weak-tier launches,
 #     * the GTA VI pre-release pseudo-comparable is excluded (not a launch).
 #   The five reported quantiles are the weighted 5/25/50/75/95% quantiles of
-#   that distribution, scaled by the case's own hour-1 print.
+#   that distribution, scaled by the case's own hour-1 print. Two further
+#   steps, both validated by leave-one-out CV: the log-spread around the
+#   median is narrowed (SPREAD = 0.8 -- the console-only family is tighter
+#   than the pooled distribution suggests), and the median curve is smoothed
+#   across hours (3-hour window in log space), which keeps the family
+#   90%-band coverage at 0.94 while cutting its pinball loss.
 #
 #   Leave-one-out cross-validation on the 37 kit comparables: mean pinball
-#   loss 0.42 (median 0.32) vs 0.93 (median 0.32) for the flat-persistence
-#   house baseline; on the console-only family 0.21 vs 0.32. The house
-#   baseline scores about 0.387 on the practice cases.
+#   loss 0.43 (median 0.33) vs 0.93 for the flat-persistence house baseline;
+#   on the console-only family 0.19 vs 0.32, winning on all 8 family cases.
+#   The house baseline scores about 0.387 on the practice cases; the v1
+#   entry scored 0.205 there (rank 953/2192), and this v2 is the same model
+#   with the spread + smoothing steps above.
 #
 #   Stdlib only, deterministic (no clock, no randomness, sorted inputs),
 #   offline. Reads $MAKEFUN_INPUT_DIR (default /input), writes
@@ -43,6 +50,11 @@ LEVELS = [0.05, 0.25, 0.5, 0.75, 0.95]
 LOG_SIGMA = 1.0
 FAMILY_BONUS = 3.0
 WEAK_TIER_WEIGHT = 0.3
+
+# v2: narrow the log-spread around the median and smooth the median curve
+# across hours (both validated by LOO-CV on the console-only family).
+SPREAD = 0.8
+SMOOTH_WIN = 3
 
 # Fallback spread for the flat-persistence forecast, used only when a
 # forecast hour has no usable comparable at all (same shape as the kit
@@ -176,7 +188,7 @@ def forecast_case(case):
             weight *= FAMILY_BONUS
         pool.append((hours, weight))
 
-    rows = []
+    raw_rows = []
     for hour in range(2, 25):
         index = hour - 1
         pairs = []
@@ -194,10 +206,27 @@ def forecast_case(case):
                 p1 * math.exp(z * FALLBACK_SIGMA * math.sqrt(hour - 1))
                 for z in FALLBACK_Z
             ]
+        raw_rows.append(values)
+
+    # Narrow the log-spread around the median and smooth the median curve
+    # across neighbouring hours (both LOO-validated on the console family).
+    medians = [math.log(r[2]) for r in raw_rows]
+    half = SMOOTH_WIN // 2
+    smooth_med = []
+    for i in range(len(medians)):
+        window = medians[max(0, i - half):min(len(medians), i + half + 1)]
+        smooth_med.append(sum(window) / len(window))
+
+    rows = []
+    for hour, values, med in zip(range(2, 25), raw_rows, smooth_med):
+        old_med = math.log(values[2])
+        adjusted = [
+            math.exp(med + SPREAD * (math.log(v) - old_med)) for v in values
+        ]
         # Enforce a non-decreasing, finite, in-range quantile row.
         cleaned = []
         previous = 0.0
-        for value in values:
+        for value in adjusted:
             if not math.isfinite(value) or value <= 0:
                 value = previous if previous > 0 else 1.0
             value = min(value, 1_000_000_000.0)
